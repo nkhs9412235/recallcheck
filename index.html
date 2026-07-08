@@ -258,7 +258,7 @@
 <div class="wrap">
 
   <header class="masthead">
-    <div class="eyebrow">消費明細 · 比對工具</div>
+    <div class="eyebrow">消費明細 · 比對工具 <span style="opacity:.6;" id="lastUpdated">· 工具最後更新：讀取中…</span></div>
     <h1>發票品項比對<br>預防性下架產品清單</h1>
     <p class="lede">上傳你的電子發票消費明細 CSV，逐筆比對「預防性下架產品清單」（更新日期：115年7月8日，共 401 項）中的產品名稱。</p>
   </header>
@@ -1893,6 +1893,24 @@ const RECALL_LIST = [
 "product": "(小武)魚豆腐"
 }
 ];
+
+// Fetch last commit time for this file from GitHub's public API (read-only, no auth,
+// no user data involved — this is separate from the CSV comparison which stays fully local).
+(function(){
+  const el = document.getElementById('lastUpdated');
+  fetch('https://api.github.com/repos/nkhs9412235/recallcheck/commits?path=index.html&per_page=1')
+    .then(r => { if(!r.ok) throw new Error('bad response'); return r.json(); })
+    .then(data => {
+      if(Array.isArray(data) && data[0] && data[0].commit && data[0].commit.author && data[0].commit.author.date){
+        const d = new Date(data[0].commit.author.date);
+        const formatted = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        el.textContent = '· 工具最後更新：' + formatted;
+      } else {
+        el.textContent = '';
+      }
+    })
+    .catch(() => { el.textContent = ''; });
+})();
 
 function normalize(s){
   if(!s) return '';
