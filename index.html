@@ -1,0 +1,2043 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>發票品項比對 · 預防性下架產品清單</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700;900&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root{
+    color-scheme: light;
+    --paper: #E9ECE3;
+    --paper-raised: #FFFFFF;
+    --ink: #10160F;
+    --ink-soft: #3D4A3D;
+    --line: #A9B2A0;
+    --alert: #8C2A1F;
+    --alert-bg: #F6E4E0;
+    --clear: #2C5744;
+    --clear-bg: #E1EBE3;
+    --stamp: #8C2A1F;
+  }
+
+  @media (prefers-color-scheme: dark){
+    :root{
+      color-scheme: dark;
+      --paper: #12160F;
+      --paper-raised: #1E241A;
+      --ink: #EDEFE5;
+      --ink-soft: #A9B4A0;
+      --line: #3B4436;
+      --alert: #E28A78;
+      --alert-bg: #3A211D;
+      --clear: #86C4A3;
+      --clear-bg: #1C2A20;
+      --stamp: #9C3323;
+    }
+  }
+
+  *{box-sizing:border-box;}
+  html{color-scheme: light dark;}
+  html,body{margin:0;padding:0;background:var(--paper);}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Noto Sans TC', sans-serif;
+    line-height:1.6;
+    min-height:100vh;
+  }
+
+  .wrap{max-width:760px;margin:0 auto;padding:32px 20px 80px;}
+
+  header.masthead{
+    border-bottom:3px double var(--ink);
+    padding-bottom:18px;
+    margin-bottom:28px;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    letter-spacing:.12em;
+    color:var(--ink);
+    font-weight:600;
+    text-transform:uppercase;
+    margin-bottom:8px;
+  }
+  h1{
+    font-family:'Noto Serif TC', serif;
+    font-weight:900;
+    font-size:clamp(26px,5vw,34px);
+    margin:0 0 10px;
+    letter-spacing:.01em;
+  }
+  .lede{
+    font-size:14.5px;
+    color:var(--ink-soft);
+    max-width:56ch;
+  }
+
+  .privacy-note{
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    border-left:4px solid var(--clear);
+    padding:12px 14px;
+    margin:20px 0 28px;
+    font-size:13px;
+    color:var(--ink-soft);
+  }
+  .privacy-note b{color:var(--ink);}
+
+  .dropzone{
+    border:2px dashed var(--ink-soft);
+    background:var(--paper-raised);
+    padding:36px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .dropzone.drag{
+    border-color:var(--stamp);
+    background:var(--paper-raised);
+  }
+  .dropzone .icon{font-size:30px;margin-bottom:8px;}
+  .dropzone .main-text{font-weight:700;font-size:15px;}
+  .dropzone .sub-text{font-size:12.5px;color:var(--ink-soft);margin-top:4px;}
+  input[type=file]{display:none;}
+
+  .filename-bar{
+    display:none;
+    align-items:center;
+    justify-content:space-between;
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    border-top:none;
+    padding:10px 14px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12.5px;
+  }
+  .filename-bar button{
+    background:none;border:none;color:var(--alert);
+    cursor:pointer;font-family:inherit;font-size:12.5px;
+    text-decoration:underline;
+  }
+
+  section.results{margin-top:36px;}
+  .summary-row{
+    display:flex;
+    gap:14px;
+    flex-wrap:wrap;
+    margin-bottom:24px;
+  }
+  .stat{
+    flex:1;
+    min-width:120px;
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    padding:14px 16px;
+  }
+  .stat .num{
+    font-family:'Noto Serif TC',serif;
+    font-weight:900;
+    font-size:28px;
+    line-height:1;
+  }
+  .stat.flagged .num{color:var(--alert);}
+  .stat .label{font-size:12px;color:var(--ink-soft);margin-top:6px;}
+
+  .section-title{
+    font-family:'Noto Serif TC',serif;
+    font-weight:700;
+    font-size:17px;
+    margin:28px 0 12px;
+    padding-bottom:6px;
+    border-bottom:1px solid var(--line);
+  }
+
+  .match-card{
+    position:relative;
+    background:var(--paper-raised);
+    border:1px solid var(--alert);
+    border-left:5px solid var(--alert);
+    padding:16px 18px;
+    margin-bottom:14px;
+  }
+  .match-card .stamp-tag{
+    position:absolute;
+    top:14px;
+    right:16px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    font-weight:700;
+    color:#fff;
+    background:var(--stamp);
+    padding:3px 8px;
+    letter-spacing:.05em;
+    transform:rotate(2deg);
+  }
+  .match-card .item-name{
+    font-weight:700;
+    font-size:15.5px;
+    margin:0 0 8px;
+    padding-right:70px;
+  }
+  .match-card .meta{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    margin-bottom:10px;
+  }
+  .match-card .against{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    background:var(--alert-bg);
+    padding:8px 10px;
+    border-radius:2px;
+  }
+  .match-card .against b{display:block;font-family:'Noto Sans TC',sans-serif;font-size:13px;margin-bottom:2px;}
+
+  .clear-list{
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    padding:14px 16px;
+  }
+  .clear-list summary{
+    cursor:pointer;
+    font-weight:700;
+    font-size:14px;
+    color:var(--clear);
+  }
+  .clear-list ul{
+    list-style:none;
+    margin:12px 0 0;
+    padding:0;
+    columns:2;
+    column-gap:20px;
+  }
+  .clear-list li{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    padding:3px 0;
+    break-inside:avoid;
+  }
+
+  .empty-state{
+    text-align:center;
+    padding:24px;
+    color:var(--ink-soft);
+    font-size:13.5px;
+  }
+
+  footer{
+    margin-top:40px;
+    padding-top:16px;
+    border-top:1px solid var(--line);
+    font-size:11.5px;
+    color:var(--ink-soft);
+  }
+
+  @media (max-width:480px){
+    .clear-list ul{columns:1;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">消費明細 · 比對工具</div>
+    <h1>發票品項比對<br>預防性下架產品清單</h1>
+    <p class="lede">上傳你的電子發票消費明細 CSV，逐筆比對「預防性下架產品清單」（更新日期：115年7月8日，共 401 項）中的產品名稱。</p>
+  </header>
+
+  <div class="privacy-note">
+    <span>🔒</span>
+    <div><b>不留紀錄：</b>所有比對都在你的瀏覽器裡完成。CSV 內容不會被上傳、傳送到任何伺服器，關閉分頁後資料即消失。</div>
+  </div>
+
+  <div id="dropzone" class="dropzone">
+    <div class="icon">🧾</div>
+    <div class="main-text">點擊選擇或拖曳 CSV 檔案至此</div>
+    <div class="sub-text">支援電子發票雲端下載的消費明細格式（需含「消費明細_品名」欄位）</div>
+    <input type="file" id="fileInput" accept=".csv">
+  </div>
+  <div class="filename-bar" id="filenameBar">
+    <span id="filenameText"></span>
+    <button id="clearBtn">清除重新上傳</button>
+  </div>
+
+  <section class="results" id="results" style="display:none;"></section>
+
+  <footer>
+    清單來源：預防性下架產品清單（業者提供，僅供參考）。品名比對採自動文字比對（去除空格與括號後做相互包含判斷），可能有漏判或誤判，請以肉眼確認每筆結果並對照原始發票。
+  </footer>
+</div>
+
+<script>
+const RECALL_LIST = [
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "雙蔬鮪魚飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "林聰明-雞肉飯飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "櫸木燻雞飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "炭火燒肉飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "韓式燒肉泡菜飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "炙烤鹽蔥燒肉飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "宗家府泡菜燒肉飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "哇沙米秋鮭飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "新極上飯糰-XO醬珠貝"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "星級饗宴-晶英三杯蛤蠣飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "星級饗宴-米香鹹酥蝦飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "新極上飯糰-熟成明太子鮭魚"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(區)星宇新極上-胡同炭火牛小排"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "新極上飯糰-蔥鹽生鮭"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)雙蔬鮪魚飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)林聰明-雞肉飯飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)櫸木燻雞飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)炭火燒肉飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)炙烤鹽蔥燒肉飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)宗家府泡菜燒肉飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)哇沙米秋鮭飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)晶英三杯蛤蠣飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)星級饗宴-米香-鹹酥蝦飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)新極上飯糰-熟成明太子鮭魚"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)新極上飯糰-蔥鹽生鮭"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "握便當-豪華秘製雙拼"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)握便當-豪華秘製雙拼"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "米香-麻油雞雙菇飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "阜杭豆漿-經典飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)阜杭豆漿-經典飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "阜杭豆漿-里肌肉蛋紫米飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金)阜杭豆漿-里肌肉蛋紫米飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "晶華-四起司香草烤雞握便當"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)晶華四起司香草烤雞握便當"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "炙燒明太子鮭魚飯糰(圓)"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "歐姆蛋包飯飯糰(圓)"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金)歐姆蛋包飯飯糰(圓)"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "石安牧場溏心蛋飯糰(圓)"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)石安牧場溏心蛋飯糰(圓)"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "鮪魚肉鬆雙手卷"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)鮪魚肉鬆雙手卷"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "晶英-南蠻炸雞雙享壽司"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)晶英-南蠻炸雞雙享壽司"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "生鮭夾心壽司"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)生鮭夾心壽司"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "阿拉斯加秋鮭鮪魚雙手卷"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(金馬)阿拉斯加秋鮭鮪魚雙手卷"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "醬燒烤雞溏心蛋三明治"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "溏心蛋紐奧良風味烤雞三明治"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "燻雞菇菇彩蔬三明治"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "吉士豬肉堡加蛋"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "花生熔岩辣雞腿堡"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "牛肉起司堡"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "塔塔香炸鱈魚堡"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "四起司燻腸捲餅"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "香腸嘎香菜風味捲餅"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "鮪魚雞蛋蔬菜捲餅"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "牛角-炙燒雙拼便當"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(離)牛角-炙燒雙拼便當"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "豆酥烤魚鮮蔬餐盒"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(離)豆酥烤魚鮮蔬餐盒"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "極饗-奮起湖秘製滷排"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(離)極饗-奮起湖秘製滷排"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "晶華-府城肉燥厚切排骨飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(離)晶華-府城肉燥厚切排骨飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "日式佛蒙特咖哩雞肉飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(離)日式佛蒙特咖哩雞肉飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "韓式漢堡排粉紅醬燉飯(含牛)"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "富錦樹-剝皮辣蝦滑蛋燴飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "歐姆蛋包飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "晶華-香烤魚排青醬燉飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(離)晶華-香烤魚排青醬燉飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "海鮮青醬焗飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(離)海鮮青醬焗飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "晶英-泡菜豬肉豆腐煲燴飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(離)晶英-泡菜豬肉豆腐煲燴飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(蔬)經典獅子頭燴飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(離)(蔬)經典獅子頭燴飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "三起司肉醬焗飯"
+},
+{
+"vendor": "聯華食品工業股份有限公司-基隆",
+"product": "(離)三起司肉醬焗飯"
+},
+{
+"vendor": "南僑油脂事業股份有限公司",
+"product": "南僑NEBOS機能性脂肪抹醬"
+},
+{
+"vendor": "南僑油脂事業股份有限公司",
+"product": "王牌液態油炸專用油"
+},
+{
+"vendor": "南僑油脂事業股份有限公司",
+"product": "南僑烘焙潔淨升級油-無添加攪拌油"
+},
+{
+"vendor": "南僑油脂事業股份有限公司",
+"product": "維佳無水烘焙油脂"
+},
+{
+"vendor": "南僑油脂事業股份有限公司",
+"product": "植物性起酥用油"
+},
+{
+"vendor": "南僑油脂事業股份有限公司",
+"product": "維佳特製丹麥專用油"
+},
+{
+"vendor": "南僑油脂事業股份有限公司",
+"product": "特製專用烘焙油脂"
+},
+{
+"vendor": "國防部福利事業管理處",
+"product": "營區團膳使用"
+},
+{
+"vendor": "故宮晶華股份有限公司",
+"product": "員工餐廳(烹調)使用"
+},
+{
+"vendor": "晶華國際酒店股份有限公司",
+"product": "烹調使用"
+},
+{
+"vendor": "享記食品有限公司",
+"product": "大紅袍花椒油"
+},
+{
+"vendor": "享記食品有限公司",
+"product": "麻辣紅油"
+},
+{
+"vendor": "享記食品有限公司",
+"product": "青麻花椒油"
+},
+{
+"vendor": "享記食品有限公司",
+"product": "麻辣鍋底醬"
+},
+{
+"vendor": "享記食品有限公司",
+"product": "麻辣鍋底醬(素)"
+},
+{
+"vendor": "享記食品有限公司",
+"product": "咖哩鍋底醬"
+},
+{
+"vendor": "享記食品有限公司",
+"product": "調味豆酥"
+},
+{
+"vendor": "金色三麥餐飲股份有限公司",
+"product": "巧達濃湯"
+},
+{
+"vendor": "金色三麥餐飲股份有限公司",
+"product": "涼拌墨魚醬"
+},
+{
+"vendor": "金色三麥餐飲股份有限公司",
+"product": "西班牙海鮮燉飯(高湯)"
+},
+{
+"vendor": "金色三麥餐飲股份有限公司",
+"product": "酸菜"
+},
+{
+"vendor": "金色三麥餐飲股份有限公司",
+"product": "海鮮鍋"
+},
+{
+"vendor": "金色三麥餐飲股份有限公司",
+"product": "紅醬"
+},
+{
+"vendor": "老協珍股份有限公司",
+"product": "TOMMI湯米-白醬鱈魚排米漢堡(2入)"
+},
+{
+"vendor": "老協珍股份有限公司",
+"product": "TOMMI湯米-海鮮蝦排米漢堡(1入)"
+},
+{
+"vendor": "泰佶食品行",
+"product": "肉粽(散裝)"
+},
+{
+"vendor": "東穎食品實業有限公司",
+"product": "沙拉醬"
+},
+{
+"vendor": "桂冠實業股份有限公司",
+"product": "桂冠沙拉"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "蜂蜜芥末醬"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "煙燻芥末醬"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "凱薩醬"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "薑汁番茄醬"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "刀口辣油"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "美玉白汁"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "青龍醬"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "蔥油醬"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "義大利綜合菇"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "肉臊醬"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "打拋豬"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "榨菜肉絲"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "香料烤腿排"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "德式酸菜"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "烤鮭魚碎肉"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "植物素排"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "皮蛋醬"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "油封鴨腿車輪餅"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "慢熬洋蔥醬"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "滷豬腳"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "滷豬腱"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "滷棒腿"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "香草草莓小蛋糕"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "芝麻蜂蜜小蛋糕"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "焙茶柚香小蛋糕"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "泰奶波士頓小蛋糕"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "抹茶草莓小蛋糕"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "焙茶瑪德蓮"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "咖啡小蛋糕"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "香草水蜜桃小蛋糕"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "檸檬小蛋糕"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "波隆那肉醬"
+},
+{
+"vendor": "路易莎職人咖啡股份有限公司",
+"product": "印度咖哩醬"
+},
+{
+"vendor": "健衢生技有限公司",
+"product": "炸甜不辣"
+},
+{
+"vendor": "大王肉脯店",
+"product": "炸肉捲"
+},
+{
+"vendor": "華福食品股份有限公司",
+"product": "麵包烘焙食品"
+},
+{
+"vendor": "廣達香食品股份有限公司",
+"product": "塔塔醬"
+},
+{
+"vendor": "廣達香食品股份有限公司",
+"product": "凱薩醬"
+},
+{
+"vendor": "廣達香食品股份有限公司",
+"product": "蜂蜜芥末醬"
+},
+{
+"vendor": "廣達香食品股份有限公司",
+"product": "素食香鬆(海苔)"
+},
+{
+"vendor": "野味企業有限公司",
+"product": "便當"
+},
+{
+"vendor": "芳水有限公司",
+"product": "甜不辣"
+},
+{
+"vendor": "點線麵餐飲(股)公司",
+"product": "辣醬包原料"
+},
+{
+"vendor": "點線麵餐飲(股)公司",
+"product": "素肉燥"
+},
+{
+"vendor": "點線麵餐飲(股)公司",
+"product": "熟麵"
+},
+{
+"vendor": "福泰團膳股份有限公司",
+"product": "便當"
+},
+{
+"vendor": "大地農產有限公司",
+"product": "蔥頭醬"
+},
+{
+"vendor": "大地農產有限公司",
+"product": "油蔥酥"
+},
+{
+"vendor": "富煒食品有限公司",
+"product": "公司行號-社會餐"
+},
+{
+"vendor": "龍膳坊企業有限公司",
+"product": "冷凍餅皮"
+},
+{
+"vendor": "聯華食品工業股份有限公司-中壢",
+"product": "荷卡炙燒明太子鮭魚烤飯糰"
+},
+{
+"vendor": "聯華食品工業股份有限公司-中壢",
+"product": "荷卡極上經典飯糰"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "(快煮餐)紅燒獅子頭"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "(快煮餐)糖醋雞丁"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "(快煮餐)海鮮豆腐煲"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "(快煮餐)馬鈴薯燉牛肉"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "(快煮餐)金沙豆腐"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "(快煮餐)(預)馬鈴薯燉牛肉"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "(快煮餐)三杯杏鮑菇"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "(快煮餐)鐵板黑胡椒豆腐"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "(快煮餐)(預)海鮮豆腐煲"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "鐵板滑蛋炸豬排丼"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "美式豬腿堡"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "黃金魚堡(114年)"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "魔王愛吃辣雞堡"
+},
+{
+"vendor": "屏榮食品新豐廠",
+"product": "二配粗飽系雞腿排炒飯(114年)"
+},
+{
+"vendor": "聯合利華股份有限公司",
+"product": "香甜沙拉醬"
+},
+{
+"vendor": "聯合利華股份有限公司",
+"product": "美玉白汁"
+},
+{
+"vendor": "聯合利華股份有限公司",
+"product": "百事福美玉白汁"
+},
+{
+"vendor": "聯合利華股份有限公司",
+"product": "香蒜風味醬"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "麻辣鍋底醬 3公斤/罐"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "麻辣鍋底醬 0.28公斤/罐"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "蕃茄湯料 1公斤/包"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "古早味油蔥拌醬 1公斤/包"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "古早味油蔥拌醬 0.06公斤/包"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "香辣油包 0.004公斤/包"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "麻醬醬包 0.045公斤/包"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "麻辣臭豆腐金滑菇 0.85公斤/包"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "麻油猴頭菇 0.6公斤/包"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "台閎蘑菇醬 2.9KG/罐"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "麻辣鍋底醬 1公斤/包"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "番茄鍋底醬 1公斤/包"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "美味大師 1公斤/包"
+},
+{
+"vendor": "富達食品有限公司",
+"product": "沙茶醬 2.9公斤/罐"
+},
+{
+"vendor": "味源股份有限公司",
+"product": "椒麻拌醬"
+},
+{
+"vendor": "味源股份有限公司",
+"product": "油蔥拌醬"
+},
+{
+"vendor": "味源股份有限公司",
+"product": "椒麻油"
+},
+{
+"vendor": "味源股份有限公司",
+"product": "ABAO辣油"
+},
+{
+"vendor": "味源股份有限公司",
+"product": "油蔥蒜醬"
+},
+{
+"vendor": "大買家股份有限公司大里國光分公司",
+"product": "麵包"
+},
+{
+"vendor": "大買家股份有限公司大里國光分公司",
+"product": "熟食"
+},
+{
+"vendor": "頂裕食品股份有限公司",
+"product": "素瓜仔肉罐頭"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "切達芝士餡"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "北海道牛奶風味餡"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "蜜烤地瓜餡"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "烤地瓜餡"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "蔬果南瓜泥"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "日式果子皮"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "紅豆餡"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "蛋糕用芋泥餡"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "香芋豆餡"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "醇芋餡(顆粒)"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "F.P芋頭粒餡CL"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "芋頭餡"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "炭焙烏龍茶餡"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "白玉QQ麻糬"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "Q心黑糖麻糬"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "Q心原味麻糬M.T"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "黑糖麻糬餡片"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "拔絲麻糬"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "原味麻糬切丁"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "蜂蜜麻糬切丁"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "黑糖麻糬切丁"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "和風黑糖QQ切丁"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "原味巧達Q心仁"
+},
+{
+"vendor": "金安信食品有限公司",
+"product": "鹹蛋黃Q心仁"
+},
+{
+"vendor": "麥仕佳食品股份有限公司",
+"product": "麵包"
+},
+{
+"vendor": "源泰昌食品工廠",
+"product": "素食包子"
+},
+{
+"vendor": "禾家香食品股份有限公司",
+"product": "水餃等麵製品"
+},
+{
+"vendor": "巧福實業股份有限公司",
+"product": "肉鬆"
+},
+{
+"vendor": "金福華",
+"product": "沙茶醬"
+},
+{
+"vendor": "金福華",
+"product": "清鍋底醬"
+},
+{
+"vendor": "金福華",
+"product": "香蒜青蔥醬"
+},
+{
+"vendor": "金福華",
+"product": "麻辣醬"
+},
+{
+"vendor": "金福華",
+"product": "豆瓣醬"
+},
+{
+"vendor": "金福華",
+"product": "綠咖哩湯底"
+},
+{
+"vendor": "金福華",
+"product": "麻辣鴨血"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "番茄肉醬義大利麵225g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "泰式打拋豬肉炒飯170g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "火腿肉絲黃金蛋炒飯215g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "奶油培根義大利麵225g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "香Q白米飯160g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "沙茶豬肉蛋炒飯170g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "泰式辣炒雞肉拌飯280g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "秘製滷雞翅100g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "勁辣泰式打拋豬200g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "紅藜燕麥飯120g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "番茄紅醬義大利麵220g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "蒜香醃漬里肌豬排2200g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "111年醃漬清肉排80g 2200g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "112年醃漬原味雞胸塊 3000g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "113年打拋雞肉醬1000g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "醃漬薄漿清肉排65g CL 1950g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "醃漬黃金油雞腿排肉80gCL 2000g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "冷凍醃漬香雞排 2600g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "2300g(中翅)/2500g(翅腿"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "檸檬雞柳條1000g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "黑胡椒豬肉燴飯 320g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "香檸三節翅 2250g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "美式燒烤翅腿600g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "蟹肉風味炒飯200g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "雞肉玉米蛋炒飯230g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "肉絲蛋炒飯230g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "培根蛋炒飯230g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "蕃茄紅醬義大利麵230g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "泰式打拋豬肉炒飯190g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "培根香蔥蛋炒飯230g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "清香羅勒義大利麵230g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "泰式打拋豬肉醬(凍)1000g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "卜蜂泰式打拋豬肉醬1000g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "蝦仁蛋炒飯280g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "泰式打拋豬肉飯309g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "肉絲黃金蛋炒飯270g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "爆炒滷雞胗116g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "義式經典嫩雞胸100g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "黑胡椒蒜味雞柳條120g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "義式雞胸肉840g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "瑪莎曼咖哩雞肉840g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "川味椒麻雞胸肉1000g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "醬爆雞胗100g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "香滷雞胗90g"
+},
+{
+"vendor": "台灣卜蜂企業股份有限公司南投肉品加工廠",
+"product": "香滷鳳爪160g"
+},
+{
+"vendor": "松鼎",
+"product": "黃金調和油"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "健康廚房纖活優格沙拉醬"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "台式香甜沙拉(無扣環)"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "105沙拉"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "味全美食沙拉(205/白玉沙拉)"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "日式山葵風味沙拉醬(安倖)"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "歐風甜口沙拉醬(歐式沙拉醬)"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "歐風甜口沙拉醬(香純)"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "日式芳醇原味沙拉醬"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "101沙拉"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "101-日式蛋黃沙拉醬"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "106-歐風酸甜沙拉醬"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "日式芳醇原味沙拉醬"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "F-104歐風鹹式沙拉醬"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "F-101日式蛋黃醬"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "健康廚房-焙煎芝麻"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "屋馬焙煎芝麻醬"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "味全焙煎芝麻(109版)"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "經典凱薩沾拌淋醬(新)"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "油醋沙拉醬-經典凱薩(108新版)"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "特級沙拉醬"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "味全沙拉醬袋裝"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "F-台式特級沙拉"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "味全105S沙拉醬"
+},
+{
+"vendor": "味全食品工業股份有限公司",
+"product": "105沙拉醬袋裝"
+},
+{
+"vendor": "味王股份有限公司",
+"product": "原汁牛肉湯麵(袋裝)"
+},
+{
+"vendor": "味王股份有限公司",
+"product": "紅燒牛肉湯麵(袋裝、碗裝)"
+},
+{
+"vendor": "味王股份有限公司",
+"product": "金味王紅燒牛肉麵(碗裝)"
+},
+{
+"vendor": "味王股份有限公司",
+"product": "十三香麻辣拌麵(袋裝、碗裝)"
+},
+{
+"vendor": "味王股份有限公司",
+"product": "辣辣麻辣燙湯麵(袋裝)"
+},
+{
+"vendor": "味王股份有限公司",
+"product": "辣辣海鮮湯麵(袋裝)"
+},
+{
+"vendor": "味王股份有限公司",
+"product": "素食麵(袋裝)"
+},
+{
+"vendor": "味王股份有限公司",
+"product": "燻香素雞湯麵(桶裝)"
+},
+{
+"vendor": "張O發",
+"product": "油炸豆包 散裝，"
+},
+{
+"vendor": "林O隆",
+"product": "油炸豆包 散裝，"
+},
+{
+"vendor": "峰妙商行",
+"product": "油炸豆包 散裝，"
+},
+{
+"vendor": "玉品實業有限公司",
+"product": "油炸豆包 散裝，"
+},
+{
+"vendor": "廖O盛",
+"product": "油炸豆包 散裝，"
+},
+{
+"vendor": "聯瑞食品科技股份有限公司",
+"product": "川味紅油冷麵醬"
+},
+{
+"vendor": "聯瑞食品科技股份有限公司",
+"product": "赤象拔蚌沙拉"
+},
+{
+"vendor": "聯瑞食品科技股份有限公司",
+"product": "水果沙拉"
+},
+{
+"vendor": "聯瑞食品科技股份有限公司",
+"product": "辣味美乃滋"
+},
+{
+"vendor": "維義事業股份有限公司",
+"product": "維義大豆沙拉油"
+},
+{
+"vendor": "維義事業股份有限公司",
+"product": "順發興專用油"
+},
+{
+"vendor": "維義事業股份有限公司",
+"product": "鼎冠油炸專用油"
+},
+{
+"vendor": "維義事業股份有限公司",
+"product": "鼎冠大豆沙拉油"
+},
+{
+"vendor": "明德食品工業股份有限公司",
+"product": "里仁調味便當菜155g"
+},
+{
+"vendor": "明德食品工業股份有限公司",
+"product": "紅油辣椒410g"
+},
+{
+"vendor": "明德食品工業股份有限公司",
+"product": "甜麵醬460g"
+},
+{
+"vendor": "明德食品工業股份有限公司",
+"product": "眷村剁椒蒜香"
+},
+{
+"vendor": "明德食品工業股份有限公司",
+"product": "老北京440g"
+},
+{
+"vendor": "明德食品工業股份有限公司",
+"product": "家常辣270g"
+},
+{
+"vendor": "明德食品工業股份有限公司",
+"product": "訂製品_甜麵醬含香油及乳酸20kg"
+},
+{
+"vendor": "明德食品工業股份有限公司",
+"product": "甜麵醬3kg"
+},
+{
+"vendor": "明德食品工業股份有限公司",
+"product": "眷村剁椒蒜香150g"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "黑芝麻醬TA-6320"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "金豚骨湯TA-6154"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "多蜜醬TA"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "黃金味噌醬"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "柴魚昆布TA-2271"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "白芝麻醬TA-6298"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "四川豚骨麻辣TA-2232"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "九州豚骨"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "豚骨高湯TA-6630"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "黑咖哩醬TA-1249"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "甘口黑咖哩TA-1705"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "麻辣火鍋TA-3683"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "柴魚昆布TA-2271"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "甘口黑咖哩TA-1705"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "柴魚昆布TA-2380"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "豚骨高湯TA-6630"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "麻辣高湯TA-6899"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "牛肉湯TA-3899"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "柴魚昆布TA-2271"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "日式咖哩醬BFT"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "黑咖哩醬TA-5495"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "豚骨高湯TA-6630"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "海鮮醬油TA-5758"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "燒肉醬TA"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "九州豚骨"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "日式咖哩醬BFT"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "甘口黑咖哩TA-1705"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "拌麵醬TA-6805"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "濃厚豚骨高湯TA-3338"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "四川豚骨麻辣TA-2232"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "大蒜激辛拉麵高湯TA-4774"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "味噌醃醬TA-7152"
+},
+{
+"vendor": "台灣有明食品股份有限公司",
+"product": "大蒜激辛拉麵高湯TA-4774"
+},
+{
+"vendor": "崁頂義豐麻油廠",
+"product": "普通香油"
+},
+{
+"vendor": "崁頂義豐麻油廠",
+"product": "特級香油"
+},
+{
+"vendor": "崁頂義豐麻油廠",
+"product": "香油"
+},
+{
+"vendor": "崁頂義豐麻油廠",
+"product": "普通麻油"
+},
+{
+"vendor": "崁頂義豐麻油廠",
+"product": "麻醬包"
+},
+{
+"vendor": "惠眾食品工業股份有限公司",
+"product": "SH番茄汁鮪魚腹肉"
+},
+{
+"vendor": "惠眾食品工業股份有限公司",
+"product": "紅SH油漬鮪魚"
+},
+{
+"vendor": "惠眾食品工業股份有限公司",
+"product": "綠SH油漬鮪魚"
+},
+{
+"vendor": "惠眾食品工業股份有限公司",
+"product": "三興特製紅燒鰻"
+},
+{
+"vendor": "惠眾食品工業股份有限公司",
+"product": "三興辣味燒鰻"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)豆竹"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)一級棒A"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)一級棒"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)北海貝"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)魚豆腐"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)起司海鲜卷"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)竹輪"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)切片椿花"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)北海翅"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)香檬麻吉燒"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)魚卵卷"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)切片魚板"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(川島)一口天"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(丸大)一口天"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(丸大)一級棒A"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(丸大)北海翅"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(丸大)魚豆腐"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(丸大)豆竹"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(丸大)魚卵卷"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(丸大)切片魚板"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(丸大)圓蝦味球"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(丸大)蝦味球"
+},
+{
+"vendor": "隆盛食品冷凍股份有限公司",
+"product": "(小武)魚豆腐"
+}
+];
+
+function normalize(s){
+  if(!s) return '';
+  return String(s)
+    .replace(/[\s()（）\[\]【】\-\/、,，。.．·]/g,'')
+    .toUpperCase();
+}
+
+// pre-normalize recall list once
+const normalizedRecall = RECALL_LIST.map(r => ({
+  vendor: r.vendor,
+  product: r.product,
+  norm: normalize(r.product)
+})).filter(r => r.norm.length >= 2);
+
+function findMatches(itemName){
+  const norm = normalize(itemName);
+  if(norm.length < 2) return [];
+  const hits = [];
+  for(const r of normalizedRecall){
+    if(norm.includes(r.norm) || r.norm.includes(norm)){
+      hits.push(r);
+    }
+  }
+  return hits;
+}
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const filenameBar = document.getElementById('filenameBar');
+const filenameText = document.getElementById('filenameText');
+const clearBtn = document.getElementById('clearBtn');
+const resultsEl = document.getElementById('results');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if(e.target.files.length) handleFile(e.target.files[0]);
+});
+clearBtn.addEventListener('click', () => {
+  fileInput.value = '';
+  filenameBar.style.display = 'none';
+  dropzone.style.display = 'block';
+  resultsEl.style.display = 'none';
+  resultsEl.innerHTML = '';
+});
+
+function handleFile(file){
+  filenameText.textContent = '已選擇：' + file.name;
+  filenameBar.style.display = 'flex';
+  dropzone.style.display = 'none';
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    Papa.parse(text, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (parsed) => {
+        processRows(parsed.data);
+      },
+      error: (err) => {
+        resultsEl.style.display = 'block';
+        resultsEl.innerHTML = '<div class="empty-state">CSV 解析失敗，請確認檔案格式。</div>';
+      }
+    });
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function processRows(rows){
+  const nameKey = '消費明細_品名';
+  const hasKey = rows.length && Object.prototype.hasOwnProperty.call(rows[0], nameKey);
+
+  if(!hasKey){
+    resultsEl.style.display = 'block';
+    resultsEl.innerHTML = '<div class="empty-state">找不到「' + nameKey + '」欄位，請確認上傳的是電子發票消費明細 CSV。</div>';
+    return;
+  }
+
+  const seen = new Map(); // itemName -> {count, sample row}
+  for(const row of rows){
+    const name = (row[nameKey] || '').trim();
+    if(!name) continue;
+    if(!seen.has(name)) seen.set(name, { count: 0, row });
+    seen.get(name).count++;
+  }
+
+  const flagged = [];
+  const clear = [];
+
+  for(const [name, info] of seen.entries()){
+    const hits = findMatches(name);
+    if(hits.length){
+      flagged.push({ name, hits, row: info.row, count: info.count });
+    }else{
+      clear.push(name);
+    }
+  }
+
+  renderResults(flagged, clear, seen.size);
+}
+
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderResults(flagged, clear, total){
+  resultsEl.style.display = 'block';
+
+  let html = '';
+  html += '<div class="summary-row">';
+  html += '<div class="stat"><div class="num">' + total + '</div><div class="label">發票品項（去重複）</div></div>';
+  html += '<div class="stat flagged"><div class="num">' + flagged.length + '</div><div class="label">疑似相符品項</div></div>';
+  html += '<div class="stat"><div class="num">' + clear.length + '</div><div class="label">未發現相符</div></div>';
+  html += '</div>';
+
+  if(flagged.length){
+    html += '<div class="section-title">⚠️ 疑似相符 · 請人工確認</div>';
+    for(const f of flagged){
+      const dateStr = f.row['發票日期'] || '';
+      const invNo = f.row['發票號碼'] || '';
+      const seller = f.row['賣方名稱'] || '';
+      html += '<div class="match-card">';
+      html += '<div class="stamp-tag">需確認</div>';
+      html += '<p class="item-name">' + esc(f.name) + '</p>';
+      html += '<div class="meta">發票 ' + esc(invNo) + ' · ' + esc(dateStr) + ' · 賣方：' + esc(seller) + (f.count > 1 ? ' · 出現 ' + f.count + ' 次' : '') + '</div>';
+      for(const h of f.hits){
+        html += '<div class="against"><b>' + esc(h.product) + '</b>清單業者：' + esc(h.vendor) + '</div>';
+      }
+      html += '</div>';
+    }
+  }else{
+    html += '<div class="section-title">⚠️ 疑似相符 · 請人工確認</div>';
+    html += '<div class="empty-state">沒有發現相符品項。</div>';
+  }
+
+  html += '<details class="clear-list">';
+  html += '<summary>查看未發現相符的 ' + clear.length + ' 個品項</summary>';
+  html += '<ul>';
+  for(const name of clear){
+    html += '<li>' + esc(name) + '</li>';
+  }
+  html += '</ul></details>';
+
+  resultsEl.innerHTML = html;
+}
+</script>
+</body>
+</html>
