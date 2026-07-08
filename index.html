@@ -1969,6 +1969,16 @@ function handleFile(file){
   reader.readAsText(file, 'UTF-8');
 }
 
+function getItemName(row, nameKey){
+  const base = (row[nameKey] || '').toString().trim();
+  const extra = row.__parsed_extra;
+  if(extra && extra.length){
+    const extraStr = extra.map(s => String(s||'').trim()).filter(Boolean).join('，');
+    if(extraStr) return base ? (base + '，' + extraStr) : extraStr;
+  }
+  return base;
+}
+
 function processRows(rows){
   const nameKey = '消費明細_品名';
   const hasKey = rows.length && Object.prototype.hasOwnProperty.call(rows[0], nameKey);
@@ -1979,10 +1989,12 @@ function processRows(rows){
     return;
   }
 
+  let shiftedCount = 0;
   const seen = new Map(); // itemName -> {count, sample row}
   for(const row of rows){
-    const name = (row[nameKey] || '').trim();
+    const name = getItemName(row, nameKey);
     if(!name) continue;
+    if(row.__parsed_extra && row.__parsed_extra.length) shiftedCount++;
     if(!seen.has(name)) seen.set(name, { count: 0, row });
     seen.get(name).count++;
   }
@@ -1999,17 +2011,24 @@ function processRows(rows){
     }
   }
 
-  renderResults(flagged, clear, seen.size);
+  renderResults(flagged, clear, seen.size, shiftedCount);
 }
 
 function esc(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function renderResults(flagged, clear, total){
+function renderResults(flagged, clear, total, shiftedCount){
   resultsEl.style.display = 'block';
 
   let html = '';
+
+  if(shiftedCount > 0){
+    html += '<div class="privacy-note" style="border-left-color:var(--alert);margin-bottom:20px;">';
+    html += '<span>🛠️</span><div>偵測到 <b>' + shiftedCount + '</b> 筆資料的原始 CSV 欄位含有未加引號的逗號（常見於地址或品名裡的逗號），造成欄位錯位。已自動重組品名欄位內容再進行比對，但顯示的品名可能包含多餘的數字片段，請對照原始發票確認。</div>';
+    html += '</div>';
+  }
+
   html += '<div class="summary-row">';
   html += '<div class="stat"><div class="num">' + total + '</div><div class="label">發票品項（去重複）</div></div>';
   html += '<div class="stat flagged"><div class="num">' + flagged.length + '</div><div class="label">疑似相符品項</div></div>';
