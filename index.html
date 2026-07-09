@@ -121,8 +121,6 @@
 
   .filename-bar{
     display:none;
-    align-items:center;
-    justify-content:space-between;
     background:var(--paper-raised);
     border:1px solid var(--line);
     border-top:none;
@@ -134,6 +132,14 @@
     background:none;border:none;color:var(--alert);
     cursor:pointer;font-family:inherit;font-size:12.5px;
     text-decoration:underline;
+  }
+  .filename-bar .file-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:2px 0;
+  }
+  .filename-bar .file-row .remove-file{
+    background:none;border:none;color:var(--ink-soft);cursor:pointer;
+    font-family:inherit;font-size:14px;line-height:1;padding:0 4px;
   }
 
   section.results{margin-top:36px;}
@@ -271,12 +277,15 @@
   <div id="dropzone" class="dropzone">
     <div class="icon">🧾</div>
     <div class="main-text">點擊選擇或拖曳 CSV 檔案至此</div>
-    <div class="sub-text">支援電子發票雲端下載的消費明細格式（需含「消費明細_品名」欄位）</div>
-    <input type="file" id="fileInput" accept=".csv">
+    <div class="sub-text">支援電子發票雲端下載的消費明細格式（需含「消費明細_品名」欄位）· 最多可同時上傳 5 個檔案，適合跨月份合併比對</div>
+    <input type="file" id="fileInput" accept=".csv" multiple>
   </div>
   <div class="filename-bar" id="filenameBar">
-    <span id="filenameText"></span>
-    <button id="clearBtn">清除重新上傳</button>
+    <div id="filenameList" style="display:flex;flex-direction:column;gap:4px;width:100%;"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+      <span id="fileCountText" style="font-size:12px;color:var(--ink-soft);"></span>
+      <button id="clearBtn">清除重新上傳</button>
+    </div>
   </div>
 
   <section class="results" id="results" style="display:none;"></section>
@@ -1941,9 +1950,13 @@ function findMatches(itemName){
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
 const filenameBar = document.getElementById('filenameBar');
-const filenameText = document.getElementById('filenameText');
+const filenameList = document.getElementById('filenameList');
+const fileCountText = document.getElementById('fileCountText');
 const clearBtn = document.getElementById('clearBtn');
 const resultsEl = document.getElementById('results');
+
+const MAX_FILES = 5;
+let selectedFiles = []; // File[]
 
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
@@ -1951,12 +1964,13 @@ dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
 dropzone.addEventListener('drop', e => {
   e.preventDefault();
   dropzone.classList.remove('drag');
-  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  if(e.dataTransfer.files.length) addFiles(Array.from(e.dataTransfer.files));
 });
 fileInput.addEventListener('change', e => {
-  if(e.target.files.length) handleFile(e.target.files[0]);
+  if(e.target.files.length) addFiles(Array.from(e.target.files));
 });
 clearBtn.addEventListener('click', () => {
+  selectedFiles = [];
   fileInput.value = '';
   filenameBar.style.display = 'none';
   dropzone.style.display = 'block';
@@ -1964,27 +1978,68 @@ clearBtn.addEventListener('click', () => {
   resultsEl.innerHTML = '';
 });
 
-function handleFile(file){
-  filenameText.textContent = '已選擇：' + file.name;
-  filenameBar.style.display = 'flex';
-  dropzone.style.display = 'none';
+function addFiles(newFiles){
+  const csvFiles = newFiles.filter(f => f.name.toLowerCase().endsWith('.csv'));
+  let combined = selectedFiles.concat(csvFiles);
+  let truncated = false;
+  if(combined.length > MAX_FILES){
+    combined = combined.slice(0, MAX_FILES);
+    truncated = true;
+  }
+  selectedFiles = combined;
+  renderFileList(truncated);
+  parseAllFiles();
+}
 
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const text = e.target.result;
-    Papa.parse(text, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (parsed) => {
-        processRows(parsed.data);
-      },
-      error: (err) => {
-        resultsEl.style.display = 'block';
-        resultsEl.innerHTML = '<div class="empty-state">CSV 解析失敗，請確認檔案格式。</div>';
+function renderFileList(truncated){
+  dropzone.style.display = 'none';
+  filenameBar.style.display = 'block';
+  filenameList.innerHTML = selectedFiles.map((f, i) =>
+    '<div class="file-row"><span>已選擇：' + esc(f.name) + '</span><button class="remove-file" data-idx="' + i + '" title="移除">✕</button></div>'
+  ).join('');
+  filenameList.querySelectorAll('.remove-file').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      selectedFiles.splice(idx, 1);
+      if(selectedFiles.length === 0){
+        clearBtn.click();
+        return;
       }
+      renderFileList(false);
+      parseAllFiles();
     });
-  };
-  reader.readAsText(file, 'UTF-8');
+  });
+  fileCountText.textContent = selectedFiles.length + ' / ' + MAX_FILES + ' 個檔案'
+    + (truncated ? '（最多 5 個，多的已略過）' : '');
+}
+
+function parseAllFiles(){
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = '<div class="empty-state">解析中…</div>';
+
+  const readers = selectedFiles.map(file => new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      Papa.parse(e.target.result, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (parsed) => resolve(parsed.data || []),
+        error: () => resolve(null)
+      });
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsText(file, 'UTF-8');
+  }));
+
+  Promise.all(readers).then(results => {
+    const failedCount = results.filter(r => r === null).length;
+    const allRows = results.filter(r => r !== null).flat();
+    if(allRows.length === 0){
+      resultsEl.innerHTML = '<div class="empty-state">CSV 解析失敗，請確認檔案格式。</div>';
+      return;
+    }
+    processRows(allRows, failedCount);
+  });
 }
 
 function getItemName(row, nameKey){
@@ -1997,9 +2052,9 @@ function getItemName(row, nameKey){
   return base;
 }
 
-function processRows(rows){
+function processRows(rows, failedCount){
   const nameKey = '消費明細_品名';
-  const hasKey = rows.length && Object.prototype.hasOwnProperty.call(rows[0], nameKey);
+  const hasKey = rows.some(r => Object.prototype.hasOwnProperty.call(r, nameKey));
 
   if(!hasKey){
     resultsEl.style.display = 'block';
@@ -2029,17 +2084,23 @@ function processRows(rows){
     }
   }
 
-  renderResults(flagged, clear, seen.size, shiftedCount);
+  renderResults(flagged, clear, seen.size, shiftedCount, failedCount || 0);
 }
 
 function esc(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function renderResults(flagged, clear, total, shiftedCount){
+function renderResults(flagged, clear, total, shiftedCount, failedCount){
   resultsEl.style.display = 'block';
 
   let html = '';
+
+  if(failedCount > 0){
+    html += '<div class="privacy-note" style="border-left-color:var(--alert);margin-bottom:12px;">';
+    html += '<span>⚠️</span><div>有 <b>' + failedCount + '</b> 個檔案解析失敗，未納入比對，請確認檔案格式是否正確。</div>';
+    html += '</div>';
+  }
 
   if(shiftedCount > 0){
     html += '<div class="privacy-note" style="border-left-color:var(--alert);margin-bottom:20px;">';
@@ -2048,6 +2109,7 @@ function renderResults(flagged, clear, total, shiftedCount){
   }
 
   html += '<div class="summary-row">';
+  html += '<div class="stat"><div class="num">' + selectedFiles.length + '</div><div class="label">已合併檔案數</div></div>';
   html += '<div class="stat"><div class="num">' + total + '</div><div class="label">發票品項（去重複）</div></div>';
   html += '<div class="stat flagged"><div class="num">' + flagged.length + '</div><div class="label">疑似相符品項</div></div>';
   html += '<div class="stat"><div class="num">' + clear.length + '</div><div class="label">未發現相符</div></div>';
